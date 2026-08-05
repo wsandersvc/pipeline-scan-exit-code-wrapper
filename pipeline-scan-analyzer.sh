@@ -105,6 +105,7 @@ process_patterns() {
         pattern_regex=$(echo "$pattern_regex" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         exit_code=$(echo "$exit_code" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         error_message=$(echo "$error_message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        pattern_matched="false"
         
         # Skip if any field is empty or contains only whitespace
         [[ -z "$pattern_name" || -z "$pattern_regex" || -z "$exit_code" || -z "$error_message" ]] && continue
@@ -124,7 +125,8 @@ process_patterns() {
         fi
         
         if [[ "$match_count" -gt 0 ]]; then
-            matched_patterns+=("$pattern_name|$pattern_regex|$exit_code|$error_message|$match_count")
+            pattern_matched="true"
+            matched_patterns+=("$pattern_name|$pattern_regex|$exit_code|$error_message|$match_count|$pattern_matched")
             
             # Update highest exit code (we want the highest positive number)
             if [[ "$exit_code" -gt "$highest_exit_code" ]]; then
@@ -136,10 +138,10 @@ process_patterns() {
     # Return results as JSON-like string
     if [[ ${#matched_patterns[@]} -gt 0 ]]; then
         local first_match="${matched_patterns[0]}"
-        IFS='|' read -r pattern_name pattern_regex exit_code error_message match_count <<< "$first_match"
-        echo "{\"exit_code\": $exit_code, \"pattern_name\": \"$pattern_name\", \"pattern_regex\": \"$pattern_regex\", \"error_message\": \"$error_message\", \"pattern_count\": $match_count}"
+        IFS='|' read -r pattern_name pattern_regex exit_code error_message match_count pattern_matched <<< "$first_match"
+        echo "{\"exit_code\": $exit_code, \"pattern_matched\": $pattern_matched, \"pattern_name\": \"$pattern_name\", \"pattern_regex\": \"$pattern_regex\", \"error_message\": \"$error_message\", \"pattern_count\": $match_count}"
     else
-        echo "{\"exit_code\": 0, \"pattern_name\": \"\", \"pattern_regex\": \"\", \"error_message\": \"\", \"pattern_count\": 0}"
+        echo "{\"exit_code\": 0, \"pattern_matched\": $pattern_matched, \"pattern_name\": \"\", \"pattern_regex\": \"\", \"error_message\": \"\", \"pattern_count\": 0}"
     fi
 }
 
@@ -216,12 +218,13 @@ display_summary() {
         pattern_count=$(echo "$pattern_result" | grep -o '"pattern_count": [0-9]*' | cut -d' ' -f2)
         logical_exit_code=$(echo "$pattern_result" | grep -o '"exit_code": [0-9]*' | cut -d' ' -f2)
         error_message=$(echo "$pattern_result" | grep -o '"error_message": "[^"]*"' | cut -d'"' -f4)
+        pattern_matched=$(echo "$pattern_result" | grep -o '"pattern_matched": [a-z]*' | cut -d' ' -f2)
     fi
     
     # Display summary
     echo "Original command exit code: $original_exit_code" >&2
-    
-    if [[ -n "$pattern_name" && "$logical_exit_code" -gt 0 ]]; then
+
+    if [[ -n "$pattern_name" && "$pattern_matched" == "true" ]]; then
         echo "Pattern matched: $pattern_name" >&2
         echo "Pattern regex: $pattern_regex" >&2
         echo "Match count: $pattern_count" >&2
@@ -334,25 +337,24 @@ main() {
     if [[ "$VERBOSE" == "true" ]]; then
         print_status "DEBUG" "Pattern result: $pattern_result" >&2
     fi
+
+    local pattern_matched
+    pattern_matched=$(echo "$pattern_result" | grep -o '"pattern_matched": [a-z]*' | cut -d' ' -f2)
     
     # Display summary
     display_summary "$original_exit_code" "$pattern_result" "$OUTPUT_FILE"
     
     # Determine final exit code
     local final_exit_code="$original_exit_code"  # Default to original exit code
-    
-    # Only override if a pattern was found
-    if [[ -n "$pattern_result" ]]; then
-        local pattern_exit_code
-        pattern_exit_code=$(echo "$pattern_result" | grep -o '"exit_code": [0-9]*' | cut -d' ' -f2)
-        
-        # Only use pattern exit code if it's not 0 (no pattern matched)
-        if [[ "$pattern_exit_code" -gt 0 ]]; then
-            final_exit_code="$pattern_exit_code"
-            print_status "INFO" "Pattern found - overriding original exit code $original_exit_code with logical exit code: $final_exit_code" >&2
-        else
-            print_status "INFO" "No patterns matched - using original exit code: $final_exit_code" >&2
-        fi
+
+    # Extract pattern exit code
+    local pattern_exit_code
+    pattern_exit_code=$(echo "$pattern_result" | grep -o '"exit_code": [0-9]*' | cut -d' ' -f2)
+
+    # Use pattern_matched flag to determine override
+    if [[ "$pattern_matched" == "true" ]]; then
+        final_exit_code="$pattern_exit_code"
+        print_status "INFO" "Pattern found - overriding original exit code $original_exit_code with logical exit code: $final_exit_code" >&2
     else
         print_status "INFO" "No patterns matched - using original exit code: $final_exit_code" >&2
     fi
