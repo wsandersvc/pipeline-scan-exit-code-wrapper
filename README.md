@@ -122,6 +122,7 @@ AUTH_INVALID_CREDENTIALS|401|210|Authentication failed with HTTP 401 Unauthorize
 AUTH_INVALID_CREDENTIALS|unauthorized|210|Unauthorized access detected. Please verify your Veracode API credentials are correct and have not expired.
 PKG_ARTIFACT_NOT_FOUND|file not found|240|File not found. The specified file could not be located. Please verify the file path and ensure the artifact exists.
 ENGINE_PARSER_ERROR|parse error|250|Parser error detected. The Veracode engine encountered an error while parsing the code. This may indicate syntax issues or unsupported code constructs.
+ENGINE_SCAN_SKIPPED|The scan failed to complete: there are no results to analyze.|0|Scan skipped. The Veracode analysis engine attempted to scan an empty or malformed package. Please review the submitted artifacts.
 ```
 
 ### Error Message Field
@@ -142,6 +143,7 @@ The fourth field contains a detailed error message that will be displayed in the
 4. **Exit Code Determination**: 
    - Uses original exit code if no patterns match
    - Uses logical exit code from pattern matching if patterns are found
+     - Can exit with code 0 when during pattern analysis (force success)
 5. **Output Display**: Shows command output, analysis summary with detailed error messages, and final exit code
 
 ## Analysis Summary Output
@@ -167,7 +169,7 @@ The summary includes:
 - **Pattern matched**: The name of the matched pattern
 - **Pattern regex**: The regular expression that matched
 - **Match count**: Number of times the pattern was found
-- **Logical exit code**: The standardized exit code (201-254)
+- **Logical exit code**: The standardized exit code (201-254) or 0 (force success)
 - **Error message**: Detailed explanation and guidance
 - **Reason**: Brief explanation of why this exit code was chosen
 
